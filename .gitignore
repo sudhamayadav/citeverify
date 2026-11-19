@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+.next/
+out/
+
+# Environment
+.env
+apps/api/.env
+
+# Database
+*.db
+*.db-journal
+*.db-wal
+
+# Storage (uploaded files)
+storage/uploads/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test coverage
+coverage/
+
+# Prisma generated
+apps/api/src/generated/

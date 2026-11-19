@@ -1,0 +1,566 @@
+// Prisma schema for CiteVerify — SQLite local hackathon prototype
+// Prisma v6.x configuration
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Document Ingestion ────────────────────────────────────────────────
+
+model Document {
+  id               String   @id @default(cuid())
+  originalFilename String
+  storagePath      String   // Private path, never exposed to frontend
+  fileHash         String   // SHA-256 of original bytes
+  mimeType         String
+  fileSize         Int
+  extractedText    String?  // Full extracted text
+  extractionState  String   @default("PENDING") // SUCCESS | PARTIAL | PARTIAL_OCR | FAILED | ...
+  extractionWarnings String? // JSON array of warnings
+  pageCount        Int?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  pages            DocumentPage[]
+  blocks           DocumentBlock[]
+  extractionRuns   ExtractionRun[]
+  claims           Claim[]
+  references       Reference[]
+  verificationJobs VerificationJob[]
+  verificationRuns VerificationRun[]
+  reviews          HumanReview[]
+
+  @@index([createdAt])
+  @@index([fileHash])
+}
+
+model DocumentPage {
+  id            String  @id @default(cuid())
+  documentId    String
+  pageNumber    Int
+  text          String?
+  charCount     Int     @default(0)
+  ocrAttempted  Boolean @default(false)
+  ocrConfidence Float?
+  ocrLanguage   String?
+  ocrResult     String? // OCR_SUCCESS | OCR_FAILED | OCR_UNAVAILABLE | null
+  warnings      String? // JSON array
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, pageNumber])
+  @@index([documentId])
+}
+
+model DocumentBlock {
+  id         String  @id @default(cuid())
+  documentId String
+  pageNumber Int?
+  blockIndex Int
+  blockType  String  // PARAGRAPH | HEADING | TABLE | BIBLIOGRAPHY | ...
+  text       String
+  startOffset Int?
+  endOffset   Int?
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+}
+
+// ─── Extraction ────────────────────────────────────────────────────────
+
+model ExtractionRun {
+  id            String   @id @default(cuid())
+  documentId    String
+  runType       String   // INITIAL | CORRECTION
+  state         String   @default("PENDING") // PENDING | RUNNING | COMPLETED | FAILED
+  extractedData String?  // JSON — claims, references, citations snapshot
+  corrections   String?  // JSON — user corrections applied
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+}
+
+// ─── Claims ────────────────────────────────────────────────────────────
+
+model Claim {
+  id                 String   @id @default(cuid())
+  documentId         String
+  originalSentence   String   // Exact substring of extracted text
+  normalizedClaim    String
+  claimType          String?  // FACTUAL | STATISTICAL | CAUSAL | COMPARISON | ...
+  extractionMethod   String   @default("HEURISTIC")
+  extractionConfidence String? // JSON basis
+  startOffset        Int?
+  endOffset          Int?
+  pageNumber         Int?
+  sectionHeading     String?
+  paragraphIndex     Int?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  document           Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  versions           ClaimVersion[]
+  citationMentions   CitationMention[]
+  verifications      ClaimVerification[]
+  reviews            HumanReview[]
+
+  @@index([documentId])
+}
+
+model ClaimVersion {
+  id              String   @id @default(cuid())
+  claimId         String
+  versionNumber   Int
+  previousText    String
+  newText         String
+  changeType      String   // EDIT | SPLIT | MERGE | FALSE_POSITIVE | ADDED
+  changedBy       String   @default("system")
+  createdAt       DateTime @default(now())
+
+  claim Claim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@index([claimId])
+}
+
+// ─── Citations & References ────────────────────────────────────────────
+
+model CitationMention {
+  id              String  @id @default(cuid())
+  claimId         String
+  referenceId     String?
+  rawMarker       String  // e.g. "[1]", "(Smith et al., 2022)"
+  markerType      String  // NUMBERED | AUTHOR_YEAR
+  mappingState    String  @default("PENDING") // MATCHED | AMBIGUOUS | MISSING | ...
+  mappingConfidence Float?
+  startOffset     Int?
+  endOffset       Int?
+
+  claim     Claim      @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  reference Reference? @relation(fields: [referenceId], references: [id])
+
+  @@index([claimId])
+  @@index([referenceId])
+}
+
+model Reference {
+  id              String  @id @default(cuid())
+  documentId      String
+  rawReferenceText String
+  title           String?
+  authors         String? // JSON array
+  publicationYear Int?
+  doi             String?
+  journal         String?
+  volumeIssuePages String?
+  sourceLocation  String? // JSON — page, block, offset
+  extractionWarnings String? // JSON array
+
+  // M9B Source Quality & Peer-Review Evidence
+  publicationType     String   @default("UNKNOWN") // JOURNAL_ARTICLE | PREPRINT | CONFERENCE_PROCEEDING | THESIS | BOOK_OR_CHAPTER | EDITORIAL_OR_CORRECTION_NOTICE | UNKNOWN
+  publicationTypeBasis String?
+  publicationTypeSourceUrl String?
+  peerReviewStatus    String   @default("UNKNOWN") // VERIFIED_BY_PUBLISHER_OR_VENUE_STATEMENT | NOT_ESTABLISHED | UNKNOWN
+  peerReviewBasis     String?
+  peerReviewSourceUrl String?
+  retractionStatus    String   @default("UNKNOWN") // CONFIRMED_RETRACTED | SEARCHED_NO_NOTICE_FOUND | UNKNOWN
+  correctionStatus    String   @default("UNKNOWN") // CONFIRMED_CORRECTION | SEARCHED_NO_CORRECTION_FOUND | UNKNOWN
+  currentnessAssessment String @default("UNKNOWN") // POSSIBLY_SUPERSEDED | NO_SUPERSESSION_SIGNAL_FOUND | UNKNOWN
+
+  document         Document           @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  citationMentions CitationMention[]
+  candidates       ReferenceCandidate[]
+  forwardCitationSearchRuns ForwardCitationSearchRun[]
+  forwardCitationContexts   ForwardCitationContext[]
+  collectionItems           CollectionItem[]
+
+  @@index([documentId])
+  @@index([doi])
+}
+
+model ReferenceCandidate {
+  id               String   @id @default(cuid())
+  referenceId      String
+  originalUrl      String
+  canonicalUrl     String?
+  pageTitle        String?
+  publicationTitle String?
+  authorCandidates String?  // JSON array
+  publicationDate  String?
+  doiCandidate     String?
+  venueCandidate   String?
+  hostDomain       String?
+  tavilyQuery      String?
+  retrievalTimestamp DateTime?
+  candidateSourceType String?
+  matchSignals     String?  // JSON
+  matchScore       Float?
+  resolutionState  String   @default("PENDING")
+
+  reference Reference @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+
+  @@index([referenceId])
+}
+
+// ─── Verification ──────────────────────────────────────────────────────
+
+model VerificationJob {
+  id              String    @id @default(cuid())
+  documentId      String
+  state           String    @default("PENDING") // PENDING | RUNNING | COMPLETED | ...
+  currentStage    String    @default("INIT")
+  currentStep     Int       @default(0)
+  totalSteps      Int?
+  stageData       String?   // JSON — per-stage persisted state
+  error           String?
+  attemptCount    Int       @default(0)
+  tavilyBudgetUsed Int      @default(0)
+  tavilyBudgetMax  Int      @default(50)
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  document  Document           @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  steps     VerificationStep[]
+  requests  TavilyRequest[]
+  passages  EvidencePassage[]
+  results   ClaimVerification[]
+  verificationRun VerificationRun?
+
+  @@index([documentId])
+  @@index([state])
+}
+
+// ─── M9 Verification Run & Reproducibility Audit ───────────────────────
+
+model VerificationRun {
+  id              String    @id @default(cuid())
+  documentId      String
+  verificationJobId String? @unique
+  runNumber       Int       @default(1)
+  status          String    @default("COMPLETED") // COMPLETED | PARTIAL | FAILED
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  document        Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  verificationJob VerificationJob?  @relation(fields: [verificationJobId], references: [id])
+  auditSnapshot   RunAuditSnapshot?
+  auditEvents     RunAuditEvent[]
+  forwardCitationSearchRuns ForwardCitationSearchRun[]
+  forwardCitationContexts   ForwardCitationContext[]
+
+  @@index([documentId])
+  @@index([runNumber])
+}
+
+model RunAuditSnapshot {
+  id                      String   @id @default(cuid())
+  verificationRunId       String   @unique
+  documentSha256          String
+  verdictRuleVersion      String   @default("1.0.0")
+  claimSnapshot           String   // JSON text
+  tavilyQueriesSnapshot   String   // JSON text
+  retrievedUrlsSnapshot   String   // JSON text
+  contentHashesSnapshot   String   // JSON text
+  passageOffsetsSnapshot  String   // JSON text
+  researchOutputsSnapshot String   // JSON text
+  localValidationSnapshot String   // JSON text
+  resultSnapshot          String   // JSON text
+  snapshotSha256          String
+  createdAt               DateTime @default(now())
+
+  verificationRun VerificationRun @relation(fields: [verificationRunId], references: [id], onDelete: Restrict)
+
+  @@index([documentSha256])
+}
+
+model RunAuditEvent {
+  id                String   @id @default(cuid())
+  verificationRunId String
+  sequenceNumber    Int
+  eventType         String   // RUN_CREATED | STAGE_TRANSITION | SOURCE_RETRIEVED | GUARDRAIL_EXECUTED | RUN_FINALIZED | HUMAN_REVIEW_RECORDED
+  payloadSnapshot   String   // JSON text
+  previousEventHash String?
+  eventHash         String
+  createdAt         DateTime @default(now())
+
+  verificationRun VerificationRun @relation(fields: [verificationRunId], references: [id], onDelete: Restrict)
+
+  @@unique([verificationRunId, sequenceNumber])
+  @@index([verificationRunId])
+}
+
+// ─── Forward Citations & Collections (M10/M11 schema preparation) ─────
+
+model ForwardCitationSearchRun {
+  id                            String    @id @default(cuid())
+  referenceId                   String
+  verificationRunId             String?
+  status                        String    @default("QUEUED")
+  idempotencyKey                String    @unique
+  querySnapshot                 String?
+  searchStartedAt               DateTime?
+  completedAt                   DateTime?
+  queriesAttempted              Int       @default(0)
+  candidateUrlsFound            Int       @default(0)
+  urlsExtracted                 Int       @default(0)
+  urlsFailed                    Int       @default(0)
+  verifiedCitationRelationships Int       @default(0)
+  contextsClassified            Int       @default(0)
+  resultsMayBeTruncated         Boolean   @default(false)
+  budgetConsumed                Int       @default(0)
+  errorCode                     String?
+  errorSummary                  String?
+  createdAt                     DateTime  @default(now())
+  updatedAt                     DateTime  @updatedAt
+
+  reference       Reference        @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+  verificationRun VerificationRun? @relation(fields: [verificationRunId], references: [id])
+  contexts        ForwardCitationContext[]
+
+  @@index([referenceId])
+}
+
+model ForwardCitationContext {
+  id                         String    @id @default(cuid())
+  forwardCitationSearchRunId String
+  referenceId                String
+  verificationRunId          String?
+  citingTitle                String
+  citingUrl                  String
+  citingDoi                  String?
+  citingAuthorsSnapshot      String?
+  citingPublishedDate        String?
+  citingDomain               String
+  citationMatchBasis         String
+  matchedBibliographyQuote   String?
+  inTextCitationMarker       String?
+  surroundingQuote           String
+  sourceLocation             String?
+  sourceStartOffset          Int?
+  sourceEndOffset            Int?
+  sourceOffsetUnit           String    @default("UTF-16")
+  sourceContentHash          String
+  quoteVerified              Boolean   @default(false)
+  contextClass               String    @default("UNCLEAR") // SUPPORTING | CONTRASTING | MENTIONING | UNCLEAR
+  classificationBasis        String
+  classificationConfidence   String    @default("MEDIUM")
+  tavilyResearchRequestId    String?
+  retrievedAt                DateTime  @default(now())
+
+  searchRun       ForwardCitationSearchRun @relation(fields: [forwardCitationSearchRunId], references: [id], onDelete: Cascade)
+  reference       Reference                @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+  verificationRun VerificationRun?         @relation(fields: [verificationRunId], references: [id])
+
+  @@index([referenceId])
+  @@index([forwardCitationSearchRunId])
+}
+
+model ResearchCollection {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items       CollectionItem[]
+}
+
+model CollectionItem {
+  id                   String    @id @default(cuid())
+  collectionId         String
+  referenceId          String
+  documentId           String?
+  notes                String?
+  lastCheckedAt        DateTime?
+  nextScheduledCheckAt DateTime?
+  createdAt            DateTime  @default(now())
+
+  collection ResearchCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  reference  Reference          @relation(fields: [referenceId], references: [id], onDelete: Restrict)
+
+  @@unique([collectionId, referenceId])
+  @@index([collectionId])
+  @@index([referenceId])
+}
+
+model VerificationStep {
+  id              String    @id @default(cuid())
+  jobId           String
+  stepIndex       Int
+  stageName       String
+  state           String    @default("PENDING")
+  inputData       String?   // JSON
+  outputData      String?   // JSON
+  error           String?
+  attemptCount    Int       @default(0)
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  job VerificationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, stepIndex])
+  @@index([jobId])
+}
+
+model TavilyRequest {
+  id              String    @id @default(cuid())
+  jobId           String
+  endpoint        String    // search | extract | research | research-status
+  requestPayload  String?   // JSON (sanitized — no keys)
+  responseStatus  Int?
+  responseData    String?   // JSON (sanitized)
+  tavilyRequestId String?   // For research async
+  usageData       String?   // JSON
+  cachedResult    Boolean   @default(false)
+  error           String?
+  retryCount      Int       @default(0)
+  createdAt       DateTime  @default(now())
+  completedAt     DateTime?
+
+  job VerificationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([tavilyRequestId])
+}
+
+model EvidencePassage {
+  id              String  @id @default(cuid())
+  jobId           String
+  candidateId     String?
+  sourceUrl       String?
+  section         String?
+  pageNumber      Int?
+  text            String
+  startOffset     Int?
+  endOffset       Int?
+  bm25Score       Float?
+  rankPosition    Int?
+
+  job VerificationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+}
+
+model ClaimVerification {
+  id                      String  @id @default(cuid())
+  jobId                   String
+  claimId                 String
+  referenceResolutionState String @default("PENDING")
+  supportVerdict          String? // SUPPORTED | PARTLY_SUPPORTED | ...
+  sourceAccessState       String  @default("UNKNOWN")
+  retractionStatus        String  @default("UNKNOWN")
+  correctionStatus        String  @default("UNKNOWN")
+  currentnessAssessment   String  @default("UNKNOWN")
+  verificationState       String  @default("PENDING")
+  humanReviewStatus       String  @default("PENDING")
+  confidence              String? // HIGH | MEDIUM | LOW
+  confidenceBasis         String?
+  sourceCompletenessBasis String?
+  evidenceQuotes          String? // JSON array
+  quoteVerified           Boolean @default(false)
+  mismatchFlags           String? // JSON array
+  explanation             String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  job   VerificationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  claim Claim           @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, claimId])
+  @@index([jobId])
+  @@index([claimId])
+}
+
+// ─── Human Review (append-only audit log) ──────────────────────────────
+
+model HumanReview {
+  id              String   @id @default(cuid())
+  documentId      String?
+  claimId         String?
+  reviewerRole    String   // Researcher | Faculty Reviewer
+  reviewerLabel   String   // Demo identity label
+  action          String   // APPROVE | OVERRIDE | REJECT | COMMENT
+  notes           String?
+  previousDecision String? // JSON reference to prior state
+  resultingState  String
+  previousHash    String?  // Hash chain
+  recordHash      String   // SHA-256 of this record
+  createdAt       DateTime @default(now())
+
+  document Document? @relation(fields: [documentId], references: [id])
+  claim    Claim?    @relation(fields: [claimId], references: [id])
+
+  @@index([documentId])
+  @@index([claimId])
+  @@index([createdAt])
+}
+
+// ─── Academic Lab ──────────────────────────────────────────────────────
+
+model LabCase {
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  claimText     String
+  expectedVerdict String?
+  sourceContent String?  // JSON
+  isSynthetic   Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  attempts LabAttempt[]
+  labels   BenchmarkLabel[]
+}
+
+model LabAttempt {
+  id          String   @id @default(cuid())
+  caseId      String
+  mode        String   // SIMULATION | LAB | FIELD
+  resultData  String?  // JSON
+  latencyMs   Int?
+  error       String?
+  createdAt   DateTime @default(now())
+
+  labCase LabCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+}
+
+model BenchmarkDataset {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  labels BenchmarkLabel[]
+}
+
+model BenchmarkLabel {
+  id          String  @id @default(cuid())
+  datasetId   String
+  caseId      String
+  goldVerdict String
+  annotator   String?
+  notes       String?
+
+  dataset BenchmarkDataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  labCase LabCase          @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@unique([datasetId, caseId])
+  @@index([datasetId])
+}

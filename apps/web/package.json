@@ -1,0 +1,36 @@
+{
+  "name": "@citeverify/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5173",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@citeverify/shared": "*",
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.2",
+    "@types/three": "^0.187.0",
+    "lucide-react": "^1.76.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "^19.1.4",
+    "@types/react-dom": "^19.1.5",
+    "@vitejs/plugin-react": "^4.5.2",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.3.5",
+    "vitest": "^3.2.1"
+  }
+}
