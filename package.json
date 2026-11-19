@@ -27,5 +27,8 @@
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@testing-library/dom": "^10.4.2"
   }
 }

@@ -1,12 +1,17 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { HealthResponse } from '@citeverify/shared';
 import { Pipeline3D } from './components/Pipeline3D';
 import { CitationGraph3D } from './components/CitationGraph3D';
+import { RoleSwitcher } from './components/RoleSwitcher';
+import { EvidenceHighlighter } from './components/EvidenceHighlighter';
+import { HumanReviewPanel } from './components/HumanReviewPanel';
+import { ReportExportPanel } from './components/ReportExportPanel';
 
 function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [manual2D, setManual2D] = useState(false);
+  const [currentRole, setCurrentRole] = useState<'Researcher' | 'Faculty Reviewer'>('Researcher');
 
   useEffect(() => {
     fetch('/api/health')
@@ -16,7 +21,7 @@ function App() {
   }, []);
 
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: '880px', margin: '0 auto', padding: '2rem' }}>
+    <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: '960px', margin: '0 auto', padding: '2rem' }}>
       {/* LOCAL-ONLY DEMO MODE banner */}
       <div
         style={{
@@ -32,10 +37,30 @@ function App() {
         LOCAL-ONLY DEMO MODE — NOT FOR PRODUCTION USE
       </div>
 
+      {/* Role Switcher */}
+      <RoleSwitcher onRoleChange={(r) => setCurrentRole(r)} />
+
       <header style={{ marginBottom: '2rem' }}>
         <h1 style={{ margin: '0 0 0.5rem 0' }}>CiteVerify</h1>
         <p style={{ color: '#475569', margin: 0 }}>Scientific Claim and Citation Verification System</p>
       </header>
+
+      {/* Evidence Highlighter Demo / Explorer Section */}
+      <section style={{ marginBottom: '2rem', padding: '1rem', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+        <h2>Evidence Inspection</h2>
+        <EvidenceHighlighter
+          fullText="Recent advances demonstrate that multimodal models achieve 84.2% accuracy on benchmark tests across standard datasets."
+          quote="multimodal models achieve 84.2% accuracy on benchmark tests"
+          quoteVerified={true}
+        />
+        <HumanReviewPanel
+          claimId="sample-claim-1"
+          claimText="Multimodal models achieve 84.2% accuracy on benchmark tests"
+          currentVerdict="SUPPORTED"
+          currentRole={currentRole}
+        />
+        <ReportExportPanel jobId="sample-job-1" />
+      </section>
 
       {/* 3D Visualizations with 2D fallback */}
       <section style={{ marginBottom: '2.5rem' }}>

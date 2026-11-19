@@ -1,0 +1,6 @@
+Abstract
+
+This is a plain text scientific claim assertion.
+
+References
+[1] Doe et al. 2021.
