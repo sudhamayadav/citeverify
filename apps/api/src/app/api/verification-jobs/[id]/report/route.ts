@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { detectTextOverlap, SourcePassageCandidate } from '@/lib/plagiarism';
 
 export async function GET(
   req: NextRequest,
@@ -75,6 +76,30 @@ export async function GET(
         const claimReviews = reviews.filter((r: any) => r.claimId === c.id);
         const latestReview = claimReviews[claimReviews.length - 1];
 
+        // Gather extracted passages from verifications to check text overlap
+        const passageCandidates: SourcePassageCandidate[] = [];
+        if (v?.evidenceQuotes) {
+          try {
+            const parsed = JSON.parse(v.evidenceQuotes);
+            for (const pq of parsed) {
+              passageCandidates.push({
+                sourceUrl: v.candidateUrl || undefined,
+                text: typeof pq === 'string' ? pq : pq.text || '',
+              });
+            }
+          } catch {
+            // ignore
+          }
+        }
+        if (v?.extractedQuote) {
+          passageCandidates.push({
+            sourceUrl: v.candidateUrl || undefined,
+            text: v.extractedQuote,
+          });
+        }
+
+        const plagiarismCheck = detectTextOverlap(c.originalSentence || c.normalizedClaim, passageCandidates);
+
         return {
           claimId: c.id,
           claimText: c.normalizedClaim || c.originalSentence,
@@ -101,6 +126,7 @@ export async function GET(
             recordHash: latestReview.recordHash,
             createdAt: latestReview.createdAt,
           } : { status: 'PENDING' },
+          plagiarismCheck,
           citations: (c.citationMentions || []).map((cit: any) => ({
             citationMarker: cit.rawMarker,
             referenceTitle: cit.reference?.title,
