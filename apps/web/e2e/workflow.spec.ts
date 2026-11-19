@@ -1,17 +1,13 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Milestone 6 Core Playwright E2E Flow', () => {
-  test('Complete flow: demo banner, role switcher gating, evidence highlighter, report export, 2D fallback', async ({ page }) => {
-    // Mock the backend API responses so tests run reliably and deterministically without starting separate full backend
+test.describe('CiteVerify End-to-End Workflow', () => {
+  test('Upload -> Extraction Confirm -> Verify -> Evidence Inspect -> Role Switch -> Faculty Override -> Export', async ({ page }) => {
+    // Mock backend API routes for deterministic, isolated E2E testing
     await page.route('**/api/health', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({
-          status: 'ok',
-          database: 'connected',
-          uptime: 120,
-        }),
+        body: JSON.stringify({ status: 'ok', database: 'connected', uptime: 100 }),
       });
     });
 
@@ -48,11 +44,11 @@ test.describe('Milestone 6 Core Playwright E2E Flow', () => {
         body: JSON.stringify({
           success: true,
           review: {
-            id: 'rev-playwright-1',
-            claimId: 'sample-claim-1',
+            id: 'rev-e2e-1',
+            claimId: 'claim-1',
             action: payload.action || 'OVERRIDE',
             resultingState: payload.resultingState || 'SUPPORTED',
-            recordHash: 'abcdef1234567890abcdef',
+            recordHash: '1234567890abcdef1234567890abcdef',
             createdAt: new Date().toISOString(),
           },
         }),
@@ -72,45 +68,55 @@ test.describe('Milestone 6 Core Playwright E2E Flow', () => {
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify({
-            reportId: 'REP-sample-job-1',
-            claims: [{ claimId: 'sample-claim-1', verdict: 'SUPPORTED' }],
+            reportId: 'REP-job-demo-1',
+            claims: [{ claimId: 'claim-1', verdict: 'SUPPORTED' }],
           }),
         });
       }
     });
 
-    // 1. Visit app
+    // 1. Visit homepage
     await page.goto('/');
 
-    // 2. Verify local demo mode banner
+    // 2. Check Top-bar Local-Only Demo Mode banner & Researcher role active
     await expect(page.locator('text=LOCAL-ONLY DEMO MODE — NOT FOR PRODUCTION USE')).toBeVisible();
-
-    // 3. Verify Researcher role is active by default and review form is locked
     await expect(page.locator('text=Current Role:')).toContainText('Researcher');
-    await expect(page.locator('text=Review actions are locked for Researcher')).toBeVisible();
 
-    // 4. Verify Evidence Highlighter shows verified contiguous quote
+    // 3. Step 1: Upload Workspace -> Click Upload
+    await expect(page.locator('text=Upload Scientific Manuscript')).toBeVisible();
+    await page.click('button:has-text("Upload & Extract Claims")');
+
+    // 4. Step 2: Extraction Correction screen -> Confirm extraction
+    await expect(page.locator('text=Stage 2: Review & Correct Extracted Claims')).toBeVisible();
+    await page.click('button:has-text("Confirm & Proceed to Verification")');
+
+    // 5. Step 3: Live Verification Timeline -> Jump to Verification Report
+    await expect(page.locator('text=Verification Job In Progress')).toBeVisible();
+    await page.click('button:has-text("Jump to Verification Report")');
+
+    // 6. Step 4: Verification Report page -> Inspect Evidence, badges, and clickable URL
+    await expect(page.locator('text=Claim Explorer')).toBeVisible();
     await expect(page.locator('text=Contiguous Quote Verified')).toBeVisible();
     await expect(page.locator('mark')).toContainText('multimodal models achieve 84.2% accuracy on benchmark tests');
+    await expect(page.locator('a[href="https://arxiv.org/abs/2301.00001"]')).toBeVisible();
 
-    // 5. Switch to Faculty Reviewer role
+    // 7. Check Audit Inspector Drawer opens
+    await page.click('button:has-text("Inspect Audit Trail")');
+    await expect(page.locator('text=Reproducibility & Audit Trail')).toBeVisible();
+    await page.click('button[aria-label="Close audit drawer"]');
+
+    // 8. Role Switch: Switch to Faculty Reviewer & Faculty Override
     await page.click('button:has-text("Faculty Reviewer")');
     await expect(page.locator('text=Current Role:')).toContainText('Faculty Reviewer');
 
-    // 6. Verify Human Review form is unlocked and submit an override review
     await expect(page.locator('button:has-text("Submit Review Event")')).toBeVisible();
-    await page.fill('textarea', 'Verified by faculty reviewer against primary source table.');
+    await page.selectOption('select', 'OVERRIDE');
+    await page.fill('textarea', 'Faculty override verified against primary table.');
     await page.click('button:has-text("Submit Review Event")');
     await expect(page.locator('text=Review recorded!')).toBeVisible();
 
-    // 7. Verify Report Export buttons exist
+    // 9. Export JSON and Markdown
     await expect(page.locator('button:has-text("Export JSON")')).toBeVisible();
     await expect(page.locator('button:has-text("Export Markdown")')).toBeVisible();
-
-    // 8. Test 2D Fallback switch
-    const toggle2D = page.locator('button:has-text("Switch to 2D Mode"), button:has-text("Switch to 3D Mode")');
-    if (await toggle2D.count() > 0) {
-      await toggle2D.first().click();
-    }
   });
 });

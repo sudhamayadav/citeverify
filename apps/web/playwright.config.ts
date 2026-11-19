@@ -12,9 +12,10 @@ export default defineConfig({
     trace: 'off',
   },
   webServer: {
-    command: 'npm run preview -- --port 5174',
-    port: 5174,
-    reuseExistingServer: false,
+    command: 'npx vite preview --port 5174',
+    url: 'http://localhost:5174',
+    reuseExistingServer: !process.env.CI,
+    timeout: 30000,
   },
   projects: [
     {
