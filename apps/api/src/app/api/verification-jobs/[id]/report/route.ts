@@ -10,7 +10,7 @@ export async function GET(
     const { searchParams } = new URL(req.url);
     const format = searchParams.get('format') || 'json';
 
-    const job = await prisma.verificationJob.findUnique({
+    const job = await (prisma.verificationJob as any).findUnique({
       where: { id: jobId },
       include: {
         document: {
@@ -21,7 +21,7 @@ export async function GET(
                   orderBy: { createdAt: 'desc' },
                   take: 1,
                 },
-                citations: {
+                citationMentions: {
                   include: {
                     reference: true,
                   },
@@ -50,7 +50,7 @@ export async function GET(
     const structuredReport = {
       reportId: `REP-${job.id}`,
       jobId: job.id,
-      stage: job.stage,
+      stage: job.currentStage || job.state,
       document: {
         id: doc?.id,
         filename: doc?.originalFilename,
@@ -60,9 +60,9 @@ export async function GET(
       },
       provenance: {
         generatedAt: new Date().toISOString(),
-        tavilyRequestId: job.tavilyRequestId || null,
-        usageBudget: job.usageBudget,
-        creditsUsed: job.creditsUsed,
+        tavilyRequestId: null,
+        usageBudget: job.tavilyBudgetMax,
+        creditsUsed: job.tavilyBudgetUsed,
       },
       limitations: [
         'Local-only hackathon demonstration.',
@@ -70,9 +70,9 @@ export async function GET(
         'Incomplete/abstract-only sources result in honest abstention, never forced unsupported.',
         'Forward citations are sampled and non-exhaustive (not 0 citations).',
       ],
-      claims: claims.map((c) => {
-        const v = c.verifications[0];
-        const claimReviews = reviews.filter((r) => r.claimId === c.id);
+      claims: claims.map((c: any) => {
+        const v = c.verifications?.[0];
+        const claimReviews = reviews.filter((r: any) => r.claimId === c.id);
         const latestReview = claimReviews[claimReviews.length - 1];
 
         return {
@@ -101,22 +101,22 @@ export async function GET(
             recordHash: latestReview.recordHash,
             createdAt: latestReview.createdAt,
           } : { status: 'PENDING' },
-          citations: c.citations.map((cit) => ({
-            citationMarker: cit.citationMarker,
+          citations: (c.citationMentions || []).map((cit: any) => ({
+            citationMarker: cit.rawMarker,
             referenceTitle: cit.reference?.title,
             referenceYear: cit.reference?.publicationYear,
             doi: cit.reference?.doi,
           })),
         };
       }),
-      references: references.map((r) => ({
+      references: references.map((r: any) => ({
         id: r.id,
         rawText: r.rawReferenceText,
         title: r.title,
         publicationYear: r.publicationYear,
         doi: r.doi,
       })),
-      reviewAuditLog: reviews.map((r) => ({
+      reviewAuditLog: reviews.map((r: any) => ({
         id: r.id,
         claimId: r.claimId,
         action: r.action,

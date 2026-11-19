@@ -50,8 +50,8 @@ export async function GET(
       }
     }
 
-    const snapLatest = rLatest?.auditSnapshot ? JSON.parse(rLatest.auditSnapshot.rulesSnapshot || '{}') : {};
-    const snapPrev = rPrevious?.auditSnapshot ? JSON.parse(rPrevious.auditSnapshot.rulesSnapshot || '{}') : {};
+    const snapLatest = rLatest?.auditSnapshot ? JSON.parse(rLatest.auditSnapshot.resultSnapshot || '{}') : {};
+    const snapPrev = rPrevious?.auditSnapshot ? JSON.parse(rPrevious.auditSnapshot.resultSnapshot || '{}') : {};
 
     // Forward citation runs comparison: find runs with contexts to compare
     const fwdRunsWithContexts = item.reference.forwardCitationSearchRuns.filter((r) => r.contexts.length > 0);

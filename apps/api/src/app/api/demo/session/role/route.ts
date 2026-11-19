@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { DEMO_ROLE_COOKIE } from '../route';
+import { DEMO_ROLE_COOKIE } from '@/lib/constants';
 
 export async function POST(req: NextRequest) {
   try {

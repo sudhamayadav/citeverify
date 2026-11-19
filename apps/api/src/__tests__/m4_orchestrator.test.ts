@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { prisma } from '@/lib/db';
-import { TavilyClient, TavilyApiError } from '@/lib/tavilyClient';
+import { TavilyClient, TavilyApiError } from '@/lib/tavily';
 import { createVerificationJob, advanceVerificationJob } from '@/lib/jobOrchestrator';
 
 describe('Milestone 4 Tavily Adapter & Job State Machine Suite', () => {

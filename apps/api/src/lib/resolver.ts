@@ -1,4 +1,4 @@
-import { TavilyClient } from './tavilyClient';
+import { TavilyClient } from './tavily';
 
 export interface CandidateResolution {
   originalUrl: string;

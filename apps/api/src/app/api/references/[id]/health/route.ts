@@ -65,7 +65,7 @@ export async function GET(
       doi: reference.doi,
       authors: reference.authors ? JSON.parse(reference.authors) : null,
       publicationYear: reference.publicationYear,
-      resolutionState: reference.resolutionState || latestCand?.resolutionState || 'MATCHED',
+      resolutionState: latestCand?.resolutionState || 'MATCHED',
       peerReviewStatus: 'CONFIRMED_PEER_REVIEWED',
       publicationType: 'JOURNAL_ARTICLE',
       retractionStatus: latestClaimVerification?.retractionStatus || 'SEARCHED_NO_NOTICE_FOUND',

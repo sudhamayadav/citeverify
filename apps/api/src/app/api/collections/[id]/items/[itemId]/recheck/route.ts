@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { createVerificationRun } from '@/lib/audit';
 import { executeForwardCitationSearch } from '@/lib/forwardCitations';
 
 export async function POST(

@@ -1,5 +1,5 @@
 import { prisma } from './db';
-import { TavilyClient } from './tavilyClient';
+import { TavilyClient } from './tavily';
 
 export interface AdvanceStepResult {
   jobId: string;

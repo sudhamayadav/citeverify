@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { appendHumanReview } from '@/lib/humanReview';
-import { DEMO_ROLE_COOKIE } from '@/app/api/demo/session/route';
+import { DEMO_ROLE_COOKIE } from '@/lib/constants';
 
 export async function POST(
   req: NextRequest,

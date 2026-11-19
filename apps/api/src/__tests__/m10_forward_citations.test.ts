@@ -180,7 +180,7 @@ describe('Milestone 10 Acceptance Test Suite (Forward Citation + Citation Health
     const res = verifyCitationRelationship(candidate, target);
     expect(res.isVerifiedCitation).toBe(true);
     // Never inject arbitrary publication year if candidate has none
-    expect(candidate.publishedDate).toBeUndefined();
+    expect((candidate as any).publishedDate).toBeUndefined();
   });
 
   // Test 5: Original-paper and duplicate-version results are excluded/deduplicated

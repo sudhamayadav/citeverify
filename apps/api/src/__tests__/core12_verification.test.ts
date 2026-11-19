@@ -3,7 +3,7 @@ import { resolveReferenceCandidates } from '@/lib/resolver';
 import { assessSourceAccess, EvidencePassageResult } from '@/lib/retriever';
 import { evaluateClaimVerdict, validateContiguousQuote } from '@/lib/verifier';
 import { extractClaimsAndReferences } from '@/lib/extractor';
-import { TavilyClient, TavilyApiError } from '@/lib/tavilyClient';
+import { TavilyClient, TavilyApiError } from '@/lib/tavily';
 
 describe('The 12 Core Judge-Facing Verification Tests (M5)', () => {
   const samplePassage: EvidencePassageResult = {

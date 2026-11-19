@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-export const DEMO_ROLE_COOKIE = 'citeverify_demo_role';
+import { DEMO_ROLE_COOKIE } from '@/lib/constants';
 
 export async function GET(req: NextRequest) {
   const roleCookie = req.cookies.get(DEMO_ROLE_COOKIE)?.value;

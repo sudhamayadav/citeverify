@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 
-export const DEMO_LEARNING_APP_CASE = {
+const DEMO_LEARNING_APP_CASE = {
   name: 'DEMO FIXTURE: 30% Learning App Study',
   description: 'Synthetic teaching source: pilot reports modest gain, not asserted 30% magnitude or scope.',
   claimText: 'A particular study found that a learning app improved test scores by 30%.',
