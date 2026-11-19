@@ -7,6 +7,7 @@ import { EvidenceHighlighter } from './components/EvidenceHighlighter';
 import { HumanReviewPanel } from './components/HumanReviewPanel';
 import { ReportExportPanel } from './components/ReportExportPanel';
 import { AcademicLabPage } from './components/AcademicLabPage';
+import { CollectionsPage } from './components/CollectionsPage';
 
 function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -66,6 +67,11 @@ function App() {
       {/* Academic Lab (M8) */}
       <section style={{ marginBottom: '2.5rem' }}>
         <AcademicLabPage />
+      </section>
+
+      {/* Research Collections (M11) */}
+      <section style={{ marginBottom: '2.5rem' }}>
+        <CollectionsPage />
       </section>
 
       {/* 3D Visualizations with 2D fallback */}
