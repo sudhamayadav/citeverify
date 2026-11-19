@@ -57,6 +57,7 @@ export const TavilyResearchStatusResponseSchema = z.object({
   request_id: z.string(),
   status: z.enum(['pending', 'in_progress', 'completed', 'failed']),
   output: z.any().optional(),
+  content: z.any().optional(),
 });
 
 export type TavilySearchRequest = z.infer<typeof TavilySearchRequestSchema>;

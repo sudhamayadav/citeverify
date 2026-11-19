@@ -90,12 +90,71 @@ describe('Milestone 4 Tavily Adapter & Job State Machine Suite', () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 429,
+      headers: {
+        get: (h: string) => (h.toLowerCase() === 'retry-after' ? '60' : null),
+      },
       text: async () => 'Rate limit exceeded. Try again in 60s.',
     });
     global.fetch = mockFetch;
 
     const client = new TavilyClient({ apiKey: 'mock-key' });
-    await expect(client.search({ query: 'test' })).rejects.toThrow(TavilyApiError);
+    try {
+      await client.search({ query: 'test' });
+      expect.fail('Should have thrown TavilyApiError');
+    } catch (err: any) {
+      expect(err).toBeInstanceOf(TavilyApiError);
+      expect(err.statusCode).toBe(429);
+      expect(err.errorCode).toBe('RATE_LIMIT_EXCEEDED');
+      expect(err.retryAfter).toBe(60);
+    }
+  });
+
+  // Acceptance Test 3b: Timeout handling
+  it('3b. Tavily network timeout is caught and surfaced truthfully', async () => {
+    const mockFetch = vi.fn().mockRejectedValue(new Error('Connection timed out'));
+    global.fetch = mockFetch;
+
+    const client = new TavilyClient({ apiKey: 'mock-key' });
+    await expect(client.search({ query: 'test timeout' })).rejects.toThrow('Connection timed out');
+  });
+
+  // Acceptance Test 3c: Research creation & polling
+  it('3c. Tavily Research initiates with request_id and polls status', async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ request_id: 'req_research_123' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          request_id: 'req_research_123',
+          status: 'in_progress',
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          request_id: 'req_research_123',
+          status: 'completed',
+          content: { summary: 'Analysis complete.' },
+        }),
+      });
+    global.fetch = mockFetch;
+
+    const client = new TavilyClient({ apiKey: 'mock-key' });
+    const createRes = await client.createResearch({
+      input: 'Evaluate statistical claim against paper',
+    });
+    expect(createRes.request_id).toBe('req_research_123');
+
+    const pollRes = await client.pollResearchStatus('req_research_123', {
+      maxAttempts: 3,
+      delayMs: 10,
+    });
+    expect(pollRes.status).toBe('completed');
+    expect(pollRes.content).toEqual({ summary: 'Analysis complete.' });
   });
 
   // Acceptance Test 4: Idempotent job creation & bounded advance state machine

@@ -16,6 +16,7 @@ export class TavilyApiError extends Error {
     public statusCode: number,
     public errorCode: string,
     message: string,
+    public retryAfter?: number,
     public details?: any
   ) {
     super(message);
@@ -47,6 +48,26 @@ export class TavilyClient {
     };
   }
 
+  private handleErrorResponse(res: Response, errText: string, context: string): never {
+    const retryAfterHeader = res.headers?.get?.('Retry-After');
+    const retryAfter = retryAfterHeader ? parseInt(retryAfterHeader, 10) : undefined;
+    let errorCode = `HTTP_${res.status}`;
+    if (res.status === 400) errorCode = 'INVALID_REQUEST';
+    else if (res.status === 401) errorCode = 'INVALID_API_KEY';
+    else if (res.status === 422) errorCode = 'VALIDATION_ERROR';
+    else if (res.status === 429) errorCode = 'RATE_LIMIT_EXCEEDED';
+    else if (res.status === 432 || res.status === 433) errorCode = 'USAGE_LIMIT_EXCEEDED';
+    else if (res.status === 434) errorCode = 'LIVE_CONTENT_FETCH_ERROR';
+
+    throw new TavilyApiError(
+      res.status,
+      errorCode,
+      `${context} failed with status ${res.status}: ${errText}`,
+      retryAfter,
+      { status: res.status, errorText: errText }
+    );
+  }
+
   /**
    * POST /search
    */
@@ -60,7 +81,7 @@ export class TavilyClient {
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
-      throw new TavilyApiError(res.status, `HTTP_${res.status}`, `Tavily Search failed with status ${res.status}: ${errText}`);
+      this.handleErrorResponse(res, errText, 'Tavily Search');
     }
 
     const data = await res.json();
@@ -80,7 +101,7 @@ export class TavilyClient {
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
-      throw new TavilyApiError(res.status, `HTTP_${res.status}`, `Tavily Extract failed with status ${res.status}: ${errText}`);
+      this.handleErrorResponse(res, errText, 'Tavily Extract');
     }
 
     const data = await res.json();
@@ -100,7 +121,7 @@ export class TavilyClient {
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
-      throw new TavilyApiError(res.status, `HTTP_${res.status}`, `Tavily Research creation failed with status ${res.status}: ${errText}`);
+      this.handleErrorResponse(res, errText, 'Tavily Research creation');
     }
 
     const data = await res.json();
@@ -119,10 +140,32 @@ export class TavilyClient {
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
-      throw new TavilyApiError(res.status, `HTTP_${res.status}`, `Tavily Research status failed with status ${res.status}: ${errText}`);
+      this.handleErrorResponse(res, errText, 'Tavily Research status');
     }
 
     const data = await res.json();
     return TavilyResearchStatusResponseSchema.parse(data);
+  }
+
+  /**
+   * Polls research status until completed, failed, or max attempts reached
+   */
+  async pollResearchStatus(
+    requestId: string,
+    options: { maxAttempts?: number; delayMs?: number } = {}
+  ): Promise<TavilyResearchStatusResponse> {
+    const maxAttempts = options.maxAttempts ?? 10;
+    const delayMs = options.delayMs ?? 1000;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const statusRes = await this.getResearchStatus(requestId);
+      if (statusRes.status === 'completed' || statusRes.status === 'failed') {
+        return statusRes;
+      }
+      if (attempt < maxAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+    return this.getResearchStatus(requestId);
   }
 }
