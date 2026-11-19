@@ -6,6 +6,7 @@ import { RoleSwitcher } from './components/RoleSwitcher';
 import { EvidenceHighlighter } from './components/EvidenceHighlighter';
 import { HumanReviewPanel } from './components/HumanReviewPanel';
 import { ReportExportPanel } from './components/ReportExportPanel';
+import { AcademicLabPage } from './components/AcademicLabPage';
 
 function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -60,6 +61,11 @@ function App() {
           currentRole={currentRole}
         />
         <ReportExportPanel jobId="sample-job-1" />
+      </section>
+
+      {/* Academic Lab (M8) */}
+      <section style={{ marginBottom: '2.5rem' }}>
+        <AcademicLabPage />
       </section>
 
       {/* 3D Visualizations with 2D fallback */}
