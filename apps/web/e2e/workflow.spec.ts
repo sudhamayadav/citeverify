@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('CiteVerify End-to-End Workflow', () => {
-  test('Upload -> Extraction Confirm -> Verify -> Evidence Inspect -> Role Switch -> Faculty Override -> Export', async ({ page }) => {
+test.describe('CiteVerify End-to-End Workflow with Text-Overlap Inspection', () => {
+  test('Upload -> Extraction Confirm -> Verify -> Evidence & Text-Overlap Inspect -> Role Switch -> Faculty Override -> Export', async ({ page }) => {
     // Mock backend API routes for deterministic, isolated E2E testing
     await page.route('**/api/health', async (route) => {
       await route.fulfill({
@@ -90,22 +90,41 @@ test.describe('CiteVerify End-to-End Workflow', () => {
     await expect(page.locator('text=Stage 2: Review & Correct Extracted Claims')).toBeVisible();
     await page.click('button:has-text("Confirm & Proceed to Verification")');
 
-    // 5. Step 3: Live Verification Timeline -> Jump to Verification Report
-    await expect(page.locator('text=Verification Job In Progress')).toBeVisible();
-    await page.click('button:has-text("Jump to Verification Report")');
+    // 5. Step 3: Live Verification Timeline automatically transitions or jump to Report
+    await expect(page.locator('button:has-text("All Claims")')).toBeVisible({ timeout: 10000 });
 
-    // 6. Step 4: Verification Report page -> Inspect Evidence, badges, and clickable URL
-    await expect(page.locator('text=Claim Explorer')).toBeVisible();
+    // 6. Step 4: Verification Report page (ReportPage.tsx)
+    // Filter bar chips
+    await expect(page.locator('button:has-text("All Claims")')).toBeVisible();
+    await expect(page.locator('button:has-text("Needs Review")')).toBeVisible();
+    await expect(page.locator('button:has-text("Text Overlap")')).toBeVisible();
+
+    // Check compact Plagiarism / Text-Overlap badges on claim explorer
+    await expect(page.getByText('Verbatim Unquoted Overlap', { exact: true })).toBeVisible();
+
+    // Click filter chip "Text Overlap"
+    await page.click('button:has-text("Text Overlap")');
+    await expect(page.locator('text=Claim Explorer (1)')).toBeVisible();
+
+    // Reset filter
+    await page.click('button:has-text("All Claims")');
+
+    // Check Clickable Source URL & Verified Evidence
     await expect(page.locator('text=Contiguous Quote Verified')).toBeVisible();
-    await expect(page.locator('mark')).toContainText('multimodal models achieve 84.2% accuracy on benchmark tests');
     await expect(page.locator('a[href="https://arxiv.org/abs/2301.00001"]')).toBeVisible();
 
-    // 7. Check Audit Inspector Drawer opens
+    // 7. Open Side-by-Side Comparison Modal (Evidence + Plagiarism Check)
+    await page.click('button:has-text("Side-by-Side Comparison Modal")');
+    await expect(page.locator('text=Side-by-Side Evidence & Text-Overlap Comparison')).toBeVisible();
+    await expect(page.locator('[role="dialog"]').locator('text=Sampled text-overlap check against retrieved Tavily sources only')).toBeVisible();
+    await page.click('button:has-text("Close Comparison")');
+
+    // 8. Open & Close Audit Inspector Drawer
     await page.click('button:has-text("Inspect Audit Trail")');
     await expect(page.locator('text=Reproducibility & Audit Trail')).toBeVisible();
     await page.click('button[aria-label="Close audit drawer"]');
 
-    // 8. Role Switch: Switch to Faculty Reviewer & Faculty Override
+    // 9. Role Switch: Switch to Faculty Reviewer & Faculty Override
     await page.click('button:has-text("Faculty Reviewer")');
     await expect(page.locator('text=Current Role:')).toContainText('Faculty Reviewer');
 
@@ -115,7 +134,7 @@ test.describe('CiteVerify End-to-End Workflow', () => {
     await page.click('button:has-text("Submit Review Event")');
     await expect(page.locator('text=Review recorded!')).toBeVisible();
 
-    // 9. Export JSON and Markdown
+    // 10. Report Export
     await expect(page.locator('button:has-text("Export JSON")')).toBeVisible();
     await expect(page.locator('button:has-text("Export Markdown")')).toBeVisible();
   });

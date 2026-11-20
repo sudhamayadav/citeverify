@@ -3,49 +3,14 @@ import type { HealthResponse } from '@citeverify/shared';
 import { Pipeline3D } from './components/Pipeline3D';
 import { CitationGraph3D } from './components/CitationGraph3D';
 import { RoleSwitcher } from './components/RoleSwitcher';
-import { EvidenceHighlighter } from './components/EvidenceHighlighter';
-import { HumanReviewPanel } from './components/HumanReviewPanel';
-import { ReportExportPanel } from './components/ReportExportPanel';
 import { AcademicLabPage } from './components/AcademicLabPage';
 import { CollectionsPage } from './components/CollectionsPage';
 import { ExtractionCorrectionUI, EditableClaim } from './components/ExtractionCorrectionUI';
-import { AuditInspectorDrawer, AuditReportData } from './components/AuditInspectorDrawer';
-import { SourceQualityBadges } from './components/SourceQualityBadges';
+import { ReportPage, ClaimReportItem, CitationReportItem } from './components/ReportPage';
 
 type WorkflowStep = 'UPLOAD' | 'CORRECTION' | 'VERIFYING' | 'REPORT';
 
-interface ClaimItem {
-  id: string;
-  originalSentence: string;
-  normalizedClaim: string;
-  claimType: string;
-  verdict: string;
-  confidence: string;
-  sourceAccessState: string;
-  quoteVerified: boolean;
-  extractedQuote: string;
-  sourceUrl: string;
-  fullText: string;
-  retractionStatus: 'CONFIRMED_RETRACTED' | 'SEARCHED_NO_NOTICE_FOUND' | 'UNKNOWN';
-  correctionStatus: 'CONFIRMED_CORRECTION' | 'SEARCHED_NO_CORRECTION_FOUND' | 'UNKNOWN';
-  publicationType: 'JOURNAL_ARTICLE' | 'PREPRINT' | 'CONFERENCE_PROCEEDING' | 'THESIS' | 'BOOK_OR_CHAPTER' | 'UNKNOWN';
-  peerReviewStatus: 'VERIFIED_BY_PUBLISHER_OR_VENUE_STATEMENT' | 'NOT_ESTABLISHED' | 'UNKNOWN';
-  citationMarker: string;
-}
-
-interface CitationItem {
-  id: string;
-  citationMarker: string;
-  title: string;
-  doi: string;
-  authors: string[];
-  publicationYear: number;
-  url: string;
-  resolved: boolean;
-  resolutionState: string;
-}
-
-const INITIAL_DEMO_CLAIMS: ClaimItem[] = [
+const INITIAL_DEMO_CLAIMS: ClaimReportItem[] = [
   {
     id: 'claim-1',
     originalSentence: 'Recent advances demonstrate that multimodal models achieve 84.2% accuracy on benchmark tests across standard datasets.',
@@ -63,6 +28,10 @@ const INITIAL_DEMO_CLAIMS: ClaimItem[] = [
     publicationType: 'JOURNAL_ARTICLE',
     peerReviewStatus: 'VERIFIED_BY_PUBLISHER_OR_VENUE_STATEMENT',
     citationMarker: '[1]',
+    plagiarismStatus: 'VERBATIM_UNQUOTED_OVERLAP',
+    overlapPercentage: 86.4,
+    matchedSpan: 'multimodal models achieve 84.2% accuracy on benchmark tests across standard datasets',
+    plagiarismSourceUrl: 'https://arxiv.org/abs/2301.00001',
   },
   {
     id: 'claim-2',
@@ -81,10 +50,14 @@ const INITIAL_DEMO_CLAIMS: ClaimItem[] = [
     publicationType: 'CONFERENCE_PROCEEDING',
     peerReviewStatus: 'VERIFIED_BY_PUBLISHER_OR_VENUE_STATEMENT',
     citationMarker: '[2]',
+    plagiarismStatus: 'NO_SIGNIFICANT_OVERLAP',
+    overlapPercentage: 18.2,
+    matchedSpan: null,
+    plagiarismSourceUrl: null,
   },
 ];
 
-const INITIAL_DEMO_CITATIONS: CitationItem[] = [
+const INITIAL_DEMO_CITATIONS: CitationReportItem[] = [
   {
     id: 'ref-1',
     citationMarker: '[1]',
@@ -122,15 +95,8 @@ function App() {
   const [verificationProgress, setVerificationProgress] = useState<number>(0);
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
 
-  // Claims & Citations
-  const [claims, setClaims] = useState<ClaimItem[]>(INITIAL_DEMO_CLAIMS);
-  const [selectedClaimId, setSelectedClaimId] = useState<string>('claim-1');
-  const [activeTab, setActiveTab] = useState<'claims' | 'citations' | 'lab' | 'collections'>('claims');
-
-  // Audit Inspector Drawer
-  const [isAuditDrawerOpen, setIsAuditDrawerOpen] = useState(false);
-  const [auditReport, setAuditReport] = useState<AuditReportData | null>(null);
-  const [isLoadingAudit, setIsLoadingAudit] = useState(false);
+  // Claims
+  const [claims, setClaims] = useState<ClaimReportItem[]>(INITIAL_DEMO_CLAIMS);
 
   useEffect(() => {
     fetch('/api/health')
@@ -139,99 +105,22 @@ function App() {
       .catch((err) => setError(err.message));
   }, []);
 
-  const selectedClaim = claims.find((c) => c.id === selectedClaimId) || claims[0];
-
   const handleStartUpload = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Simulate upload or call /api/documents/upload
     setActiveStep('CORRECTION');
   };
 
   const handleConfirmExtraction = async (corrections: any) => {
-    // Stage 2 Confirmation
     setActiveStep('VERIFYING');
     setIsVerifying(true);
     setVerificationProgress(20);
 
-    // Progress timeline simulation
     setTimeout(() => setVerificationProgress(60), 300);
     setTimeout(() => {
       setVerificationProgress(100);
       setIsVerifying(false);
       setActiveStep('REPORT');
     }, 700);
-  };
-
-  const handleOpenAudit = async () => {
-    setIsAuditDrawerOpen(true);
-    setIsLoadingAudit(true);
-    try {
-      const res = await fetch(`/api/verification-runs/${jobId}/audit`);
-      if (res.ok) {
-        const data = await res.json();
-        setAuditReport(data);
-      } else {
-        // Fallback default fixture for inspection if route returns 404
-        setAuditReport({
-          verificationRunId: `run-${jobId}`,
-          runNumber: 1,
-          status: 'COMPLETED',
-          startedAt: new Date(Date.now() - 60000).toISOString(),
-          completedAt: new Date().toISOString(),
-          hashChainValid: true,
-          auditSnapshot: {
-            documentSha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-            verdictRuleVersion: '1.0.0-audited',
-            claimSnapshot: claims.map((c) => ({
-              claimId: c.id,
-              originalSentence: c.originalSentence,
-              normalizedClaim: c.normalizedClaim,
-            })),
-            tavilyQueriesSnapshot: [
-              { query: 'multimodal models accuracy benchmark', endpoint: '/search', timestamp: new Date().toISOString() },
-            ],
-            retrievedUrlsSnapshot: [selectedClaim.sourceUrl],
-            contentHashesSnapshot: [
-              { url: selectedClaim.sourceUrl, contentSha256: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08', retrievedAt: new Date().toISOString() },
-            ],
-            passageOffsetsSnapshot: [
-              { passageId: 'p-1', startOffset: 0, endOffset: selectedClaim.extractedQuote.length, offsetUnit: 'UTF-16' },
-            ],
-            localValidationSnapshot: {
-              quoteVerified: selectedClaim.quoteVerified,
-              numericComparability: 'EXACT_MATCH',
-              urlProvenanceVerified: true,
-            },
-            resultSnapshot: {
-              automatedVerdict: selectedClaim.verdict,
-              confidence: selectedClaim.confidence,
-              verificationState: 'COMPLETED',
-            },
-            snapshotSha256: '4a5a544c4b5d63f0d576a0fb4f2f9f8c61f09230538e12f866c1f163b715e714',
-          },
-          auditEvents: [
-            { sequenceNumber: 1, eventType: 'VERIFICATION_INITIALIZED', payload: {}, eventHash: 'hash1', createdAt: new Date().toISOString() },
-            { sequenceNumber: 2, eventType: 'TAVILY_SEARCH_EXECUTED', payload: {}, eventHash: 'hash2', createdAt: new Date().toISOString() },
-            { sequenceNumber: 3, eventType: 'VERDICT_COMPUTED', payload: {}, eventHash: 'hash3', createdAt: new Date().toISOString() },
-          ],
-          humanReviews: [],
-        });
-      }
-    } catch {
-      // Ignored
-    } finally {
-      setIsLoadingAudit(false);
-    }
-  };
-
-  const handleReviewRecorded = (review: any) => {
-    if (review && review.resultingState) {
-      setClaims((prev) =>
-        prev.map((c) =>
-          c.id === selectedClaimId ? { ...c, verdict: review.resultingState } : c
-        )
-      );
-    }
   };
 
   const editableClaims: EditableClaim[] = claims.map((c) => ({
@@ -394,200 +283,24 @@ function App() {
         </section>
       )}
 
-      {/* 3. Step 4: Verification Report Page */}
+      {/* 3. Step 4: Verification Report Page with Integrated Text-Overlap / Plagiarism Check */}
       {activeStep === 'REPORT' && (
         <main style={{ marginBottom: '2.5rem' }}>
-          {/* Tab Bar: Claim Explorer vs Citation Explorer */}
-          <div style={{ display: 'flex', borderBottom: '2px solid #e2e8f0', marginBottom: '1.5rem', gap: '1rem' }}>
-            <button
-              onClick={() => setActiveTab('claims')}
-              style={{
-                padding: '0.6rem 1rem',
-                border: 'none',
-                background: 'none',
-                borderBottom: activeTab === 'claims' ? '3px solid #2563eb' : '3px solid transparent',
-                color: activeTab === 'claims' ? '#2563eb' : '#64748b',
-                fontWeight: activeTab === 'claims' ? 600 : 400,
-                cursor: 'pointer',
-                fontSize: '1rem',
-              }}
-            >
-              Claim Explorer ({claims.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('citations')}
-              style={{
-                padding: '0.6rem 1rem',
-                border: 'none',
-                background: 'none',
-                borderBottom: activeTab === 'citations' ? '3px solid #2563eb' : '3px solid transparent',
-                color: activeTab === 'citations' ? '#2563eb' : '#64748b',
-                fontWeight: activeTab === 'citations' ? 600 : 400,
-                cursor: 'pointer',
-                fontSize: '1rem',
-              }}
-            >
-              Citation Explorer ({INITIAL_DEMO_CITATIONS.length})
-            </button>
-          </div>
-
-          {activeTab === 'claims' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1.5rem', alignItems: 'start' }}>
-              {/* Left Column: Claim list */}
-              <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1rem', backgroundColor: '#f8fafc' }}>
-                <h3 style={{ margin: '0 0 1rem 0', fontSize: '1rem', color: '#0f172a' }}>Extracted Claims</h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {claims.map((claim) => (
-                    <div
-                      key={claim.id}
-                      onClick={() => setSelectedClaimId(claim.id)}
-                      style={{
-                        padding: '0.75rem',
-                        borderRadius: '6px',
-                        border: selectedClaimId === claim.id ? '2px solid #2563eb' : '1px solid #e2e8f0',
-                        backgroundColor: selectedClaimId === claim.id ? '#eff6ff' : '#ffffff',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#2563eb' }}>{claim.citationMarker}</span>
-                        <span
-                          style={{
-                            fontSize: '0.7rem',
-                            fontWeight: 700,
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            backgroundColor: claim.verdict === 'SUPPORTED' ? '#dcfce7' : '#fef3c7',
-                            color: claim.verdict === 'SUPPORTED' ? '#166534' : '#92400e',
-                          }}
-                        >
-                          {claim.verdict}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: '0.85rem', color: '#1e293b', lineHeight: 1.4 }}>
-                        {claim.normalizedClaim}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Right Column: Claim Details + Side-by-side Evidence Comparison + Badges + Faculty Review */}
-              <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1.5rem', backgroundColor: '#ffffff' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                  <div>
-                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#64748b' }}>
-                      Claim &bull; Type: {selectedClaim.claimType} &bull; Marker: {selectedClaim.citationMarker}
-                    </span>
-                    <h3 style={{ margin: '0.25rem 0', fontSize: '1.15rem', color: '#0f172a' }}>
-                      {selectedClaim.normalizedClaim}
-                    </h3>
-                  </div>
-
-                  <button
-                    onClick={handleOpenAudit}
-                    style={{
-                      padding: '0.4rem 0.8rem',
-                      backgroundColor: '#f1f5f9',
-                      border: '1px solid #cbd5e1',
-                      borderRadius: '6px',
-                      fontSize: '0.8rem',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      color: '#0f172a',
-                    }}
-                  >
-                    🔍 Inspect Audit Trail
-                  </button>
-                </div>
-
-                {/* Source Quality Badges & Clickable Source URL */}
-                <div style={{ marginBottom: '1.25rem' }}>
-                  <SourceQualityBadges
-                    publicationType={selectedClaim.publicationType}
-                    peerReviewStatus={selectedClaim.peerReviewStatus}
-                    retractionStatus={selectedClaim.retractionStatus}
-                    correctionStatus={selectedClaim.correctionStatus}
-                  />
-
-                  <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#475569' }}>
-                    <strong>Source URL: </strong>
-                    <a
-                      href={selectedClaim.sourceUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ color: '#2563eb', textDecoration: 'underline' }}
-                    >
-                      {selectedClaim.sourceUrl}
-                    </a>
-                    <span style={{ marginLeft: '0.75rem', color: '#64748b' }}>
-                      (Access: {selectedClaim.sourceAccessState.replace(/_/g, ' ')})
-                    </span>
-                  </div>
-                </div>
-
-                {/* Side-by-Side Evidence Comparison Highlighter */}
-                <div style={{ marginBottom: '1.5rem' }}>
-                  <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', color: '#334155' }}>
-                    Evidence Comparison (Contiguous Quote Check)
-                  </h4>
-                  <div style={{ border: '1px solid #e2e8f0', borderRadius: '6px', padding: '1rem', backgroundColor: '#f8fafc' }}>
-                    <EvidenceHighlighter
-                      fullText={selectedClaim.fullText}
-                      quote={selectedClaim.extractedQuote}
-                      quoteVerified={selectedClaim.quoteVerified}
-                    />
-                  </div>
-                </div>
-
-                {/* Faculty Reviewer Approve/Override Panel */}
-                <div style={{ marginTop: '1.5rem', borderTop: '1px solid #e2e8f0', paddingTop: '1.25rem' }}>
-                  <h4 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem', color: '#0f172a' }}>
-                    Human Review & Faculty Override Panel
-                  </h4>
-                  <HumanReviewPanel
-                    claimId={selectedClaim.id}
-                    claimText={selectedClaim.normalizedClaim}
-                    currentVerdict={selectedClaim.verdict}
-                    currentRole={currentRole}
-                    onReviewSubmitted={handleReviewRecorded}
-                  />
-                </div>
-
-                {/* Report Export Panel */}
-                <div style={{ marginTop: '1.5rem' }}>
-                  <ReportExportPanel jobId={jobId} />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'citations' && (
-            <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '1.5rem', backgroundColor: '#ffffff' }}>
-              <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', color: '#0f172a' }}>Citations & References</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {INITIAL_DEMO_CITATIONS.map((cit) => (
-                  <div key={cit.id} style={{ padding: '1rem', border: '1px solid #e2e8f0', borderRadius: '6px', backgroundColor: '#f8fafc' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                      <span style={{ fontWeight: 700, color: '#2563eb' }}>{cit.citationMarker}</span>
-                      <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '4px', backgroundColor: '#dcfce7', color: '#166534', fontWeight: 600 }}>
-                        {cit.resolutionState}
-                      </span>
-                    </div>
-                    <div style={{ fontWeight: 600, color: '#0f172a' }}>{cit.title}</div>
-                    <div style={{ fontSize: '0.85rem', color: '#475569', marginTop: '0.25rem' }}>
-                      Authors: {cit.authors.join(', ')} &bull; Year: {cit.publicationYear} &bull; DOI: {cit.doi}
-                    </div>
-                    <div style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}>
-                      <a href={cit.url} target="_blank" rel="noopener noreferrer" style={{ color: '#2563eb', textDecoration: 'underline' }}>
-                        {cit.url}
-                      </a>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <ReportPage
+            jobId={jobId}
+            claims={claims}
+            citations={INITIAL_DEMO_CITATIONS}
+            currentRole={currentRole}
+            onReviewRecorded={(review) => {
+              if (review?.resultingState) {
+                setClaims((prev) =>
+                  prev.map((c) =>
+                    c.id === review.claimId ? { ...c, verdict: review.resultingState } : c
+                  )
+                );
+              }
+            }}
+          />
         </main>
       )}
 
@@ -629,14 +342,6 @@ function App() {
         )}
         {!health && !error && <p style={{ fontSize: '0.8rem', color: '#64748b' }}>Loading health status...</p>}
       </section>
-
-      {/* Audit Inspector Drawer */}
-      <AuditInspectorDrawer
-        isOpen={isAuditDrawerOpen}
-        onClose={() => setIsAuditDrawerOpen(false)}
-        auditReport={auditReport}
-        isLoading={isLoadingAudit}
-      />
     </div>
   );
 }
